@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Diagnostico TV</title>
+<style>
+body{margin:0;padding:20px;background:#111;color:#eee;font-family:Arial,Helvetica,sans-serif;font-size:20px}
+h1{font-size:28px;margin:0 0 8px;color:#fff}
+h2{font-size:22px;color:#6cf;margin:18px 0 6px;border-bottom:1px solid #444}
+.row{padding:3px 0}
+.k{display:inline-block;width:400px;color:#bbb}
+.ok{color:#5f5;font-weight:bold}
+.no{color:#f66;font-weight:bold}
+.mid{color:#fc4;font-weight:bold}
+#sum{font-size:26px;margin:6px 0 10px}
+#keys{font-size:28px;color:#fff;background:#222;padding:10px;min-height:38px;margin-bottom:6px}
+#hint{color:#999;font-size:16px;margin-bottom:10px}
+button{font-size:22px;padding:8px 18px;margin:6px 0;background:#246;color:#fff;border:2px solid #68a}
+button:focus{border-color:#ff0;background:#357;outline:none}
+#vlog{font-size:16px;color:#ccc;margin-top:6px}
+</style>
+</head>
+<body>
+<h1>Diagnostico do navegador da TV</h1>
+<div id="sum">Carregando...</div>
+<div id="hint">Aperte teclas do controle remoto (setas, OK, voltar, numeros, cores). O codigo aparece abaixo. Use as setas para rolar a pagina.</div>
+<div id="keys">Teclas: (nenhuma ainda)</div>
+<div id="out"></div>
+
+<h2>Teste de reproducao de video</h2>
+<div>Use as setas para focar o botao e aperte OK.</div>
+<button id="btnv" type="button">Testar video MP4 (H.264)</button>
+<div id="vbox"></div>
+<div id="vlog"></div>
+
+<script>
+/* Para testar outro video (por exemplo um MP4 seu na rede), troque o endereco abaixo. */
+var VIDEO_URL = "https://www.w3schools.com/html/mov_bbb.mp4";
+
+(function () {
+  var out = document.getElementById("out");
+  var yes = 0, no = 0;
+
+  function txt(s) { return document.createTextNode(String(s)); }
+
+  function section(title) {
+    var h = document.createElement("h2");
+    h.appendChild(txt(title));
+    out.appendChild(h);
+  }
+
+  function row(label, value, state) {
+    var d = document.createElement("div");
+    d.className = "row";
+    var a = document.createElement("span");
+    a.className = "k";
+    a.appendChild(txt(label));
+    var b = document.createElement("span");
+    if (state === true) { b.className = "ok"; yes++; }
+    else if (state === false) { b.className = "no"; no++; }
+    else { b.className = "mid"; }
+    b.appendChild(txt(value));
+    d.appendChild(a);
+    d.appendChild(b);
+    out.appendChild(d);
+  }
+
+  function yn(label, cond) { row(label, cond ? "SIM" : "NAO", !!cond); }
+
+  function attempt(fn) { try { return !!fn(); } catch (e) { return false; } }
+
+  function evalOk(code) { return attempt(function () { return new Function(code)(); }); }
+
+  function cssOk(props) {
+    var el = document.createElement("div");
+    for (var i = 0; i < props.length; i++) {
+      if (typeof el.style[props[i]] !== "undefined") { return true; }
+    }
+    return false;
+  }
+
+  function cssValueOk(prop, values) {
+    var el = document.createElement("div");
+    for (var i = 0; i < values.length; i++) {
+      try { el.style[prop] = values[i]; } catch (e) {}
+      if (el.style[prop] === values[i]) { return true; }
+    }
+    return false;
+  }
+
+  /* ---------- Ambiente ---------- */
+  section("Ambiente");
+  row("User agent", navigator.userAgent, null);
+  row("Plataforma", navigator.platform || "?", null);
+  row("Tela (screen)", screen.width + " x " + screen.height, null);
+  row("Janela (viewport)", (window.innerWidth || 0) + " x " + (window.innerHeight || 0), null);
+  row("devicePixelRatio", window.devicePixelRatio || "indefinido", null);
+  row("Protocolo da pagina", location.protocol, null);
+
+  /* ---------- JavaScript ---------- */
+  section("JavaScript");
+  yn("JSON", typeof JSON !== "undefined" && JSON.parse && JSON.stringify);
+  yn("XMLHttpRequest", typeof XMLHttpRequest !== "undefined");
+  yn("localStorage", attempt(function () {
+    localStorage.setItem("t", "1");
+    var r = localStorage.getItem("t") === "1";
+    localStorage.removeItem("t");
+    return r;
+  }));
+  yn("WebSocket", typeof WebSocket !== "undefined");
+  yn("Function.bind", !!Function.prototype.bind);
+  yn("Array.forEach/map/indexOf", !!(Array.prototype.forEach && Array.prototype.map && Array.prototype.indexOf));
+  yn("addEventListener", !!document.addEventListener);
+  yn("requestAnimationFrame", !!(window.requestAnimationFrame || window.webkitRequestAnimationFrame));
+  yn("Canvas 2D", attempt(function () { var c = document.createElement("canvas"); return c.getContext && c.getContext("2d"); }));
+
+  section("JavaScript moderno (ES6+)");
+  yn("Arrow function", evalOk("return (function(){ var f = () => 1; return f() === 1; })();"));
+  yn("let / const", evalOk("let a = 1; const b = 2; return a + b === 3;"));
+  yn("Template string", evalOk("var x = 1; return `a${x}` === 'a1';"));
+  yn("class", evalOk("class A{}; return typeof A === 'function';"));
+  yn("Promise", typeof Promise !== "undefined");
+  yn("fetch", typeof fetch !== "undefined");
+  yn("Map / Set", typeof Map !== "undefined" && typeof Set !== "undefined");
+
+  /* ---------- Video ---------- */
+  section("Video e audio (HTML5)");
+  var v = document.createElement("video");
+  var hasVideo = !!(v && v.canPlayType);
+  yn("Elemento <video>", hasVideo);
+  yn("Elemento <audio>", !!document.createElement("audio").canPlayType);
+  if (hasVideo) {
+    var tipos = [
+      ["MP4 H.264 + AAC", 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'],
+      ["MP4 H.264 High", 'video/mp4; codecs="avc1.640028, mp4a.40.2"'],
+      ["MP4 (generico)", "video/mp4"],
+      ["MP4 HEVC/H.265", 'video/mp4; codecs="hvc1.1.6.L93.B0"'],
+      ["WebM VP8", 'video/webm; codecs="vp8, vorbis"'],
+      ["WebM VP9", 'video/webm; codecs="vp9"'],
+      ["Ogg Theora", 'video/ogg; codecs="theora, vorbis"'],
+      ["HLS (m3u8)", "application/vnd.apple.mpegurl"],
+      ["MKV", "video/x-matroska"],
+      ["MP3", "audio/mpeg"],
+      ["AAC", 'audio/mp4; codecs="mp4a.40.2"']
+    ];
+    for (var i = 0; i < tipos.length; i++) {
+      var r = "";
+      try { r = v.canPlayType(tipos[i][1]); } catch (e) { r = ""; }
+      row(tipos[i][0], r ? r : "NAO", r ? true : false);
+    }
+  }
+  yn("MediaSource (MSE)", !!(window.MediaSource || window.WebKitMediaSource));
+  yn("EME / DRM", !!(navigator.requestMediaKeySystemAccess || window.WebKitMediaKeys || window.MSMediaKeys));
+  yn("WebRTC", !!(window.RTCPeerConnection || window.webkitRTCPeerConnection));
+  yn("Web Audio", !!(window.AudioContext || window.webkitAudioContext));
+
+  /* ---------- CSS ---------- */
+  section("CSS");
+  yn("transition", cssOk(["transition", "webkitTransition"]));
+  yn("transform", cssOk(["transform", "webkitTransform"]));
+  yn("border-radius", cssOk(["borderRadius", "webkitBorderRadius"]));
+  yn("box-shadow", cssOk(["boxShadow", "webkitBoxShadow"]));
+  yn("opacity", cssOk(["opacity"]));
+  yn("Flexbox (display:flex)", cssValueOk("display", ["flex", "-webkit-flex"]));
+  yn("Flexbox antigo (-webkit-box)", cssValueOk("display", ["-webkit-box"]));
+  yn("Grid (display:grid)", cssValueOk("display", ["grid", "-webkit-grid"]));
+
+  document.getElementById("sum").innerHTML =
+    '<span class="ok">' + yes + ' recursos SIM</span> &nbsp; <span class="no">' + no + ' NAO</span>';
+
+  /* ---------- Teclas do controle ---------- */
+  var keysEl = document.getElementById("keys");
+  var log = [];
+  function onKey(e) {
+    e = e || window.event;
+    var code = e.keyCode || e.which || 0;
+    var nome = {
+      13: "OK", 37: "ESQ", 38: "CIMA", 39: "DIR", 40: "BAIXO",
+      8: "BACKSPACE", 27: "ESC", 461: "VOLTAR", 403: "VERMELHO",
+      404: "VERDE", 405: "AMARELO", 406: "AZUL", 415: "PLAY",
+      19: "PAUSE", 413: "STOP", 417: "FF", 412: "REW"
+    }[code] || "";
+    log.unshift(code + (nome ? " (" + nome + ")" : ""));
+    if (log.length > 8) { log.pop(); }
+    keysEl.innerHTML = "Teclas: " + log.join(" &nbsp;|&nbsp; ");
+  }
+  if (document.addEventListener) { document.addEventListener("keydown", onKey, false); }
+  else { document.onkeydown = onKey; }
+
+  /* ---------- Teste de reproducao ---------- */
+  var vbox = document.getElementById("vbox");
+  var vlog = document.getElementById("vlog");
+  var btn = document.getElementById("btnv");
+  var events = [];
+
+  function addEv(s) {
+    events.push(s);
+    if (events.length > 14) { events.shift(); }
+    vlog.innerHTML = events.join("<br>");
+  }
+
+  btn.onclick = function () {
+    vbox.innerHTML = "";
+    events = [];
+    var vid = document.createElement("video");
+    vid.width = 480;
+    vid.height = 270;
+    vid.controls = true;
+    vid.setAttribute("webkit-playsinline", "");
+    var names = ["loadstart", "loadedmetadata", "canplay", "playing", "waiting", "stalled", "ended"];
+    for (var i = 0; i < names.length; i++) {
+      (function (n) {
+        vid.addEventListener(n, function () { addEv("evento: " + n); }, false);
+      })(names[i]);
+    }
+    vid.addEventListener("error", function () {
+      var c = vid.error ? vid.error.code : "?";
+      addEv('<span class="no">ERRO de video, codigo ' + c + " (1=abortado 2=rede 3=decodificacao 4=formato/origem nao suportada)</span>");
+    }, false);
+    var last = 0;
+    vid.addEventListener("timeupdate", function () {
+      var s = Math.floor(vid.currentTime);
+      if (s !== last) { last = s; addEv("tempo: " + s + "s"); }
+    }, false);
+    vbox.appendChild(vid);
+    addEv("carregando: " + VIDEO_URL);
+    vid.src = VIDEO_URL;
+    try { vid.load(); vid.play(); } catch (e) { addEv("excecao ao tocar: " + e); }
+  };
+})();
+</script>
+</body>
+</html>
